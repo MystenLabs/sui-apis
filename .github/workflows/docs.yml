@@ -1,26 +1,19 @@
-name: Generate Protobuf Docs After Merge
+name: Generate Protobuf Docs
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
-
-permissions:
-  contents: write
-  pull-requests: write
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  generate-docs-if-merged:
-    if: github.event.pull_request.merged == true
+  generate-docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout main branch
-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
-        with:
-          fetch-depth: 0
-          ref: main
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
@@ -43,33 +36,19 @@ jobs:
           export PATH="$HOME/go/bin:$PATH"
       
           PROTO_FILES=$(find ./proto -name "*.proto")
+          
+          mkdir gen-docs
       
           protoc \
             --plugin=protoc-gen-doc=$HOME/go/bin/protoc-gen-doc \
             --proto_path=./proto \
-            --doc_out=json,documentation.json:./proto \
+            --doc_out=json,documentation.json:./gen-docs \
             $PROTO_FILES
 
-      - name: Check for changes
-        id: git-diff
-        run: |
-          git add ./proto/documentation.json
-          if [ ! -f ./proto/documentation.json ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          elif git diff --cached --quiet; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create PR with updated docs
-        if: steps.git-diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update generated documentation.json"
-          branch: update/proto-docs-${{ github.run_id }}
-          title: "[docs][auto] Update proto docs after merge of PR #${{ github.event.pull_request.number }}"
-          body: |
-            This PR includes regenerated protobuf documentation (`documentation.json`) based on changes merged in PR #${{ github.event.pull_request.number }}.
-          labels: auto-update, documentation
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gen-docs
+          publish_dir: ./gen-docs
+          force_orphan: true
