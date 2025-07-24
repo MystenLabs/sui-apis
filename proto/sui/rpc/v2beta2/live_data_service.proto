@@ -68,22 +68,17 @@ message CoinMetadata {
   // This capability allows updating the coin's metadata fields.
   // Only populated when metadata is from CoinRegistry.
   optional string metadata_cap_id = 7;
-
-  // Extra fields from the CoinRegistry that provide extensibility for future additions.
-  // Only populated when metadata is from CoinRegistry.
-  repeated ExtraField extra_fields = 8;
-}
-
-// Supply state of a coin, matching the Move SupplyState enum
-enum SupplyState {
-  // Supply is unknown or TreasuryCap still exists (minting still possible)
-  SUPPLY_STATE_UNKNOWN = 0;
-  // Supply is fixed (TreasuryCap consumed, no more minting possible)
-  FIXED = 1;
 }
 
 // Information about a coin type's `0x2::coin::TreasuryCap` and its total available supply
 message CoinTreasury {
+  // Supply state of a coin, matching the Move SupplyState enum
+  enum SupplyState {
+    // Supply is unknown or TreasuryCap still exists (minting still possible)
+    SUPPLY_STATE_UNKNOWN = 0;
+    // Supply is fixed (TreasuryCap consumed, no more minting possible)
+    FIXED = 1;
+  }
   // ObjectId of the `0x2::coin::TreasuryCap` object.
   optional string id = 1;
   // Total available supply for this coin type.
@@ -100,14 +95,6 @@ message RegulatedCoinMetadata {
   optional string coin_metadata_object = 2;
   // The ID of the coin's `DenyCap` object.
   optional string deny_cap_object = 3;
-}
-
-// Extra field for coin metadata extensibility in CoinRegistry
-message ExtraField {
-  // The key identifying the extra field
-  string key = 1;
-  // The serialized value of the extra field
-  bytes value = 2;
 }
 
 // Request message for `LiveDataService.GetBalance`.
