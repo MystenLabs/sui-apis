@@ -42,18 +42,29 @@ message ExecuteTransactionResponse {
 
 // Indicates the finality of the executed transaction.
 message TransactionFinality {
-  oneof finality {
-    // A quorum certificate certifying that a transaction is final but might not
-    // be included in a checkpoint yet.
-    ValidatorAggregatedSignature certified = 1;
+  enum FinalityKind {
+    FINALITY_KIND_UNKNOWN = 0;
 
-    // Sequence number of the checkpoint that includes the transaction.
-    uint64 checkpointed = 2;
+    // Indicates that there exists a quorum certificate, certifying that the
+    // transaction is final but that it might not be included in a checkpoint
+    // yet.
+    CERTIFIED = 1;
 
-    // Indicates that a quorum of validators has executed the transaction but
-    // that it might not be included in a checkpoint yet.
-    google.protobuf.Empty quorum_executed = 3;
+    // Indicates that the transaction is final and is included in a checkpoint.
+    CHECKPOINTED = 2;
+
+    // Indicates that the transaction was executed by a quorum of validators
+    // but that it might not be included in a checkpoint yet.
+    QUORUM_EXECUTED = 3;
   }
+
+  optional FinalityKind kind = 1;
+
+  // A quorum certificate if `kind` is `CERTIFIED`.
+  optional ValidatorAggregatedSignature signature = 2;
+
+  // Checkpoint that the transaction is included in if `kind` is `CHECKPOINTED`.
+  optional uint64 checkpoint = 3;
 }
 
 message SimulateTransactionRequest {
