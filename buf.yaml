@@ -12,8 +12,10 @@ modules:
         - proto/google
       ignore_only:
         ENUM_VALUE_PREFIX:
+          - proto/sui/rpc/v2
           - proto/sui/rpc/v2beta2
         ENUM_ZERO_VALUE_SUFFIX:
+          - proto/sui/rpc/v2/signature_scheme.proto
           - proto/sui/rpc/v2beta2/signature_scheme.proto
 
       enum_zero_value_suffix: _UNKNOWN
@@ -25,3 +27,6 @@ modules:
 breaking:
   use:
     - WIRE_JSON
+  # Ignore alpha packages
+  # ignore:
+  #   - proto/sui/v2alpha
