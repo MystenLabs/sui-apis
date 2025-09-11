@@ -6,7 +6,6 @@ syntax = "proto3";
 package sui.rpc.v2;
 
 import "google/protobuf/duration.proto";
-import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 import "sui/rpc/v2/argument.proto";
 import "sui/rpc/v2/bcs.proto";
@@ -69,48 +68,82 @@ message TransactionExpiration {
 
 // Transaction type.
 message TransactionKind {
-  oneof kind {
+  enum Kind {
+    KIND_UNKNOWN = 0;
+
     // A user transaction comprised of a list of native commands and Move calls.
-    ProgrammableTransaction programmable_transaction = 2;
+    PROGRAMMABLE_TRANSACTION = 1;
 
     // System Transactions
-
-    // A system transaction comprised of a list of native commands and Move calls.
-    ProgrammableTransaction programmable_system_transaction = 3;
 
     // System transaction used to end an epoch.
     //
     // The `ChangeEpoch` variant is now deprecated (but the `ChangeEpoch` struct is still used by
     // `EndOfEpochTransaction`).
-    ChangeEpoch change_epoch = 100;
+    CHANGE_EPOCH = 2;
 
     // Transaction used to initialize the chain state.
     //
     // Only valid if in the genesis checkpoint (0) and if this is the very first transaction ever
     // executed on the chain.
-    GenesisTransaction genesis = 101;
+    GENESIS = 3;
 
     // V1 consensus commit update.
-    ConsensusCommitPrologue consensus_commit_prologue_v1 = 102;
+    CONSENSUS_COMMIT_PROLOGUE_V1 = 4;
 
     // Update set of valid JWKs used for zklogin.
-    AuthenticatorStateUpdate authenticator_state_update = 103;
+    AUTHENTICATOR_STATE_UPDATE = 5;
 
     // Set of operations to run at the end of the epoch to close out the current epoch and start
     // the next one.
-    EndOfEpochTransaction end_of_epoch = 104;
+    END_OF_EPOCH = 6;
 
     // Randomness update.
-    RandomnessStateUpdate randomness_state_update = 105;
+    RANDOMNESS_STATE_UPDATE = 7;
 
     // V2 consensus commit update.
-    ConsensusCommitPrologue consensus_commit_prologue_v2 = 106;
+    CONSENSUS_COMMIT_PROLOGUE_V2 = 8;
 
     // V3 consensus commit update.
-    ConsensusCommitPrologue consensus_commit_prologue_v3 = 107;
+    CONSENSUS_COMMIT_PROLOGUE_V3 = 9;
 
     // V4 consensus commit update.
-    ConsensusCommitPrologue consensus_commit_prologue_v4 = 108;
+    CONSENSUS_COMMIT_PROLOGUE_V4 = 10;
+
+    // A system transaction comprised of a list of native commands and Move calls.
+    // PROGRAMMABLE_SYSTEM_TRANSACTION = 11;
+  }
+
+  optional Kind kind = 1;
+
+  oneof data {
+    // A transaction comprised of a list of native commands and Move calls.
+    ProgrammableTransaction programmable_transaction = 2;
+
+    // System transaction used to end an epoch.
+    //
+    // The `ChangeEpoch` variant is now deprecated (but the `ChangeEpoch` struct is still used by
+    // `EndOfEpochTransaction`).
+    ChangeEpoch change_epoch = 3;
+
+    // Transaction used to initialize the chain state.
+    //
+    // Only valid if in the genesis checkpoint (0) and if this is the very first transaction ever
+    // executed on the chain.
+    GenesisTransaction genesis = 4;
+
+    // consensus commit update info
+    ConsensusCommitPrologue consensus_commit_prologue = 5;
+
+    // Update set of valid JWKs used for zklogin.
+    AuthenticatorStateUpdate authenticator_state_update = 6;
+
+    // Set of operations to run at the end of the epoch to close out the current epoch and start
+    // the next one.
+    EndOfEpochTransaction end_of_epoch = 7;
+
+    // Randomness update.
+    RandomnessStateUpdate randomness_state_update = 8;
   }
 }
 
@@ -398,7 +431,42 @@ message EndOfEpochTransaction {
 
 // Operation run at the end of an epoch.
 message EndOfEpochTransactionKind {
-  oneof kind {
+  enum Kind {
+    KIND_UNKNOWN = 0;
+
+    // End the epoch and start the next one.
+    CHANGE_EPOCH = 1;
+
+    // Create and initialize the authenticator object used for zklogin.
+    AUTHENTICATOR_STATE_CREATE = 2;
+    // Expire JWKs used for zklogin.
+    AUTHENTICATOR_STATE_EXPIRE = 3;
+
+    // Create and initialize the randomness object.
+    RANDOMNESS_STATE_CREATE = 4;
+
+    // Create and initialize the deny list object.
+    DENY_LIST_STATE_CREATE = 5;
+
+    // Create and initialize the bridge object.
+    BRIDGE_STATE_CREATE = 6;
+
+    // Initialize the bridge committee.
+    BRIDGE_COMMITTEE_INIT = 7;
+
+    // Execution time observations from the committee to preserve cross epoch
+    STORE_EXECUTION_TIME_OBSERVATIONS = 8;
+
+    // Create the accumulator root object.
+    // ACCUMULATOR_ROOT_CREATE = 9;
+
+    // Create and initialize the Coin Registry object.
+    // COIN_REGISTRY_CREATE = 10;
+  }
+
+  optional Kind kind = 1;
+
+  oneof data {
     // End the epoch and start the next one.
     ChangeEpoch change_epoch = 2;
 
@@ -408,22 +476,11 @@ message EndOfEpochTransactionKind {
     // Execution time observations from the committee to preserve cross epoch
     ExecutionTimeObservations execution_time_observations = 4;
 
-    // Use higher field numbers for kinds which happen infrequently.
+    // ChainId used when initializing the bridge
+    string bridge_chain_id = 5;
 
-    // Create and initialize the authenticator object used for zklogin.
-    google.protobuf.Empty authenticator_state_create = 200;
-    // Create and initialize the randomness object.
-    google.protobuf.Empty randomness_state_create = 201;
-    // Create and initialize the deny list object.
-    google.protobuf.Empty deny_list_state_create = 202;
-    // Create and initialize the bridge object.
-    string bridge_state_create = 203;
-    // Initialize the bridge committee.
-    uint64 bridge_committee_init = 204;
-    // Create the accumulator root object.
-    google.protobuf.Empty accumulator_root_create = 205;
-    // Create and initialize the Coin Registry object.
-    google.protobuf.Empty coin_registry_create = 206;
+    // Start version of the Bridge object
+    uint64 bridge_object_version = 6;
   }
 }
 
