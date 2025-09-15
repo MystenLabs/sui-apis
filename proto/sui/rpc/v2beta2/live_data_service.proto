@@ -78,6 +78,8 @@ message CoinTreasury {
     SUPPLY_STATE_UNKNOWN = 0;
     // Supply is fixed (TreasuryCap consumed, no more minting possible)
     FIXED = 1;
+    // Supply can only decrease (burning allowed, minting not allowed)
+    BURN_ONLY = 2;
   }
   // ObjectId of the `0x2::coin::TreasuryCap` object.
   optional string id = 1;
