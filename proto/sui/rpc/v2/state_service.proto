@@ -35,21 +35,33 @@ message GetCoinInfoResponse {
   // type's `0x2::coin::TreasuryCap` if it exists and has not been wrapped.
   optional CoinTreasury treasury = 3;
 
-  // Regulation state of the coin
-  oneof regulation_state {
-    // The coin is regulated
-    RegulatedCoinMetadata regulated = 4;
-    // The coin is not regulated
-    UnregulatedState unregulated = 5;
-    // The regulation state is unknown
-    UnknownRegulationState unknown = 6;
-  }
+  // If this coin type is a regulated coin, this field will be
+  // populated with information either from its Currency object
+  // in the CoinRegistry, or from its `0x2::coin::RegulatedCoinMetadata`
+  // object for coins that have not been migrated to the CoinRegistry
+  //
+  // If this coin is not known to be regulated, only the
+  // coin_regulated_state field will be populated.
+  optional RegulatedCoinMetadata regulated_metadata = 4;
 }
 
 // Metadata for a coin type
 message CoinMetadata {
+  // Information about the state of the coin's MetadataCap
+  enum MetadataCapState {
+    // Indicates the state of the MetadataCap is unknown.
+    // Set when the coin has not been migrated to the CoinRegistry.
+    METADATA_CAP_STATE_UNKNOWN = 0;
+    // Indicates the MetadataCap has been claimed.
+    CLAIMED = 1;
+    // Indicates the MetadataCap has not been claimed.
+    UNCLAIMED = 2;
+    // Indicates the MetadataCap has been deleted.
+    DELETED = 3;
+  }
+
   // ObjectId of the `0x2::coin::CoinMetadata` object or
-  // 0x2::sui::coin_registry::CoinData object (when registered with CoinRegistry).
+  // 0x2::sui::coin_registry::Currency object (when registered with CoinRegistry).
   optional string id = 1;
   // Number of decimal places to coin uses.
   optional uint32 decimals = 2;
@@ -61,23 +73,13 @@ message CoinMetadata {
   optional string description = 5;
   // URL for the token logo
   optional string icon_url = 6;
-
+  // The MetadataCap ID if it has been claimed for this coin type.
+  // This capability allows updating the coin's metadata fields.
+  // Only populated when metadata is from CoinRegistry.
+  optional string metadata_cap_id = 7;
   // State of the MetadataCap for this coin type.
-  oneof metadata_cap_state {
-    // The MetadataCap ID if it has been claimed
-    string claimed = 7;
-    // The MetadataCap is unclaimed
-    MetadataCapUnclaimed unclaimed = 8;
-    // The MetadataCap has been deleted
-    MetadataCapDeleted deleted = 9;
-  }
+  optional MetadataCapState metadata_cap_state = 8;
 }
-
-// Indicates the MetadataCap exists but has not been claimed
-message MetadataCapUnclaimed {}
-
-// Indicates the MetadataCap has been deleted
-message MetadataCapDeleted {}
 
 // Information about a coin type's `0x2::coin::TreasuryCap` and its total available supply
 message CoinTreasury {
@@ -100,7 +102,21 @@ message CoinTreasury {
 
 // Information about a regulated coin, which indicates that it makes use of the transfer deny list.
 message RegulatedCoinMetadata {
+  // Indicates the state of the regulation of the coin.
+  enum CoinRegulatedState {
+    // Indicates the regulation state of the coin is unknown.
+    // This is set when a coin has not been migrated to the
+    // coin registry and has no `0x2::coin::RegulatedCoinMetadata`
+    // object.
+    COIN_REGULATED_STATE_UNKNOWN = 0;
+    // Indicates a coin is regulated. RegulatedCoinMetadata will be populated.
+    REGULATED = 1;
+    // Indicates a coin is unregulated.
+    UNREGULATED = 2;
+  }
+
   // ObjectId of the `0x2::coin::RegulatedCoinMetadata` object.
+  // Only present for coins that have not been migrated to CoinRegistry.
   optional string id = 1;
   // The ID of the coin's `CoinMetadata` or `CoinData` object.
   optional string coin_metadata_object = 2;
@@ -110,13 +126,9 @@ message RegulatedCoinMetadata {
   optional bool allow_global_pause = 4;
   // Variant of the regulated coin metadata
   optional uint32 variant = 5;
+  // Indicates the coin's regulated state.
+  optional CoinRegulatedState coin_regulated_state = 6;
 }
-
-// Indicates a coin is unregulated.
-message UnregulatedState {}
-
-// Indicates the regulation state of the coin is unknown (it has not been migrated to the coin registry)
-message UnknownRegulationState {}
 
 // Request message for `LiveDataService.GetBalance`.
 message GetBalanceRequest {
