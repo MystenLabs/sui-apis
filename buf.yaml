@@ -14,6 +14,9 @@ modules:
         ENUM_VALUE_PREFIX:
           - proto/sui/rpc/v2
         ENUM_ZERO_VALUE_SUFFIX:
+          # Ordering's zero value is ORDERING_ASCENDING since ascending is
+          # the documented default for an unset field.
+          - proto/sui/rpc/v2/query_options.proto
           - proto/sui/rpc/v2/signature_scheme.proto
 
       enum_zero_value_suffix: _UNKNOWN
