@@ -124,6 +124,11 @@ enum ErrorReason {
   // `OUT_OF_RANGE` when that checkpoint is above the latest indexed
   // checkpoint.
   //
+  // `ListPackageVersions` also returns this with `OUT_OF_RANGE`, in either
+  // ordering, for a `page_token` or cursor that names a position this server
+  // has not indexed. `bound` is "cursor" for a page token too, and its page
+  // tokens and cursors record no checkpoint.
+  //
   // A server also returns this with `UNAVAILABLE` and `bound`
   // "min_checkpoint" when it does not reach the checkpoint in the request's
   // `x-sui-min-checkpoint` header in time. Another replica has reached it, so
@@ -170,6 +175,10 @@ enum ErrorReason {
   //
   // `GetPackage` also returns this with `OUT_OF_RANGE` for a `version` this
   // server has pruned.
+  //
+  // `ListPackageVersions` also returns this with `OUT_OF_RANGE`, in either
+  // ordering, for a `page_token` or cursor that names a position below where
+  // this server's history begins.
   //
   // Pruned data does not come back, so the same request fails the same way
   // on this server. A client can send it to a server that retains the data,
