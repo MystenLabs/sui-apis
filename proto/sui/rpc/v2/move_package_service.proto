@@ -6,6 +6,7 @@ syntax = "proto3";
 package sui.rpc.v2;
 
 import "sui/rpc/v2/move_package.proto";
+import "sui/rpc/v2/query_options.proto";
 
 service MovePackageService {
   rpc GetPackage(GetPackageRequest) returns (GetPackageResponse);
@@ -99,6 +100,8 @@ message ListPackageVersionsRequest {
   // The maximum number of versions to return. The service may return fewer than this value.
   // If unspecified, at most `1000` entries will be returned.
   // The maximum value is `10000`; values above `10000` will be coerced to `10000`.
+  //
+  // Must be unset when `options` is set.
   optional uint32 page_size = 2;
 
   // A page token, received from a previous `ListPackageVersions` call.
@@ -106,6 +109,11 @@ message ListPackageVersionsRequest {
   //
   // When paginating, all other parameters provided to `ListPackageVersions` must
   // match the call that provided the page token.
+  //
+  // A page token naming a version this server does not serve fails with
+  // `OUT_OF_RANGE`, as a cursor does (see `options`).
+  //
+  // Must be unset when `options` is set.
   optional bytes page_token = 3;
 
   // Optional. List only the versions published at or before this
@@ -118,10 +126,45 @@ message ListPackageVersionsRequest {
   // Servers that predate this field ignore it and list every version, with
   // `PackageVersion.checkpoint` unset.
   optional uint64 at_checkpoint = 4;
+
+  // Optional. Cursor paging (see `QueryOptions`). `page_size` and
+  // `page_token` must then be unset (`INVALID_ARGUMENT` otherwise), and
+  // `next_page_token` is never set.
+  //
+  // This listing is ordered by ascending version. `limit` defaults to `1000`
+  // and is coerced to at most `10000`. Cursors come from
+  // `PackageVersion.cursor`. A malformed cursor, or one for another package,
+  // fails with `INVALID_ARGUMENT`. A cursor this server does not serve fails
+  // with `OUT_OF_RANGE` in either ordering: with
+  // `ErrorReason.ABOVE_LATEST_AVAILABLE` past what it has indexed, or
+  // `BELOW_EARLIEST_AVAILABLE` below where its history begins.
+  //
+  // Responses carry no `Watermark` or `QueryEnd`: resume from the last
+  // version's `cursor`, as `after` when ascending or `before` when
+  // descending. A response with fewer than `limit` versions is the last page
+  // in that direction; without `at_checkpoint`, later publishes can extend an
+  // ascending listing.
+  //
+  // Servers that predate this field ignore it, so clients must check that
+  // versions carry `PackageVersion.cursor`.
+  optional QueryOptions options = 5;
+
+  // Optional. Start of the version range to list (inclusive). Applies with
+  // or without `options`, and intersects with every other bound.
+  //
+  // Servers that predate this field ignore it, as for `options`.
+  optional uint64 start_version = 6;
+
+  // Optional. End of the version range to list (exclusive). Applies with or
+  // without `options`, and intersects with every other bound.
+  //
+  // Servers that predate this field ignore it, as for `options`.
+  optional uint64 end_version = 7;
 }
 
 message ListPackageVersionsResponse {
-  // List of all package versions, ordered by version.
+  // The package's versions in this listing's order (ascending version), or
+  // in reverse when `options.ordering` is `ORDERING_DESCENDING`.
   //
   // Servers that prune history may omit versions published before their
   // lowest available checkpoint that were later replaced in place, such as
@@ -129,7 +172,8 @@ message ListPackageVersionsResponse {
   repeated PackageVersion versions = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
-  // If this field is omitted, there are no subsequent pages.
+  // If this field is omitted, there are no subsequent pages. Never set when
+  // the request sets `options`.
   optional bytes next_page_token = 2;
 }
 
@@ -143,4 +187,10 @@ message PackageVersion {
   // history may leave this unset for versions published before their lowest
   // available checkpoint.
   optional uint64 checkpoint = 3;
+  // The opaque position of this version in the listing, for use as
+  // `ListPackageVersionsRequest.options.after` or `options.before`. A server
+  // that supports `options` sets this on every version, with or without
+  // `options`, so versions without a cursor mean the server ignored
+  // `options`, `start_version` and `end_version`.
+  optional bytes cursor = 4;
 }
