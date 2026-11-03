@@ -245,10 +245,11 @@ message ListObjectVersionsRequest {
   // that was still being indexed when a later version was listed.
   //
   // The checkpoint must be at or below the highest checkpoint the server has
-  // indexed; larger values fail with `NOT_FOUND`, because the server cannot
-  // answer for them yet. Servers that prune history may also fail with
-  // `NOT_FOUND` for checkpoints below their lowest available one, and servers
-  // still backfilling history may fail with `UNAVAILABLE`.
+  // indexed; larger values fail with `OUT_OF_RANGE` and reason
+  // `ABOVE_LATEST_AVAILABLE`, because the server cannot answer for them yet.
+  // Servers that prune history may also fail with `OUT_OF_RANGE` and reason
+  // `BELOW_EARLIEST_AVAILABLE` for checkpoints below their lowest available
+  // one, and servers still backfilling history may fail with `UNAVAILABLE`.
   optional uint64 at_checkpoint = 6;
 }
 
