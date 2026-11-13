@@ -88,6 +88,10 @@ message GetFunctionResponse {
   optional FunctionDescriptor function = 1;
 }
 
+// Servers without the indexes this method needs fail it with `UNIMPLEMENTED`
+// and reason `NOT_SERVED_HERE`. Servers may fail any `ListPackageVersions`
+// request with `UNAVAILABLE` and reason `NOT_READY` while they rebuild history
+// after restoring from a snapshot.
 message ListPackageVersionsRequest {
   // Required. The `storage_id` of any version of the package.
   optional string package_id = 1;
@@ -103,10 +107,25 @@ message ListPackageVersionsRequest {
   // When paginating, all other parameters provided to `ListPackageVersions` must
   // match the call that provided the page token.
   optional bytes page_token = 3;
+
+  // Optional. List only the versions published at or before this
+  // checkpoint, so a successful response is exact as of `at_checkpoint`. A
+  // package first published after this checkpoint lists no versions.
+  // Outside the checkpoints the server has indexed, it fails as a request
+  // pinned to a checkpoint (see `ErrorReason.ABOVE_LATEST_AVAILABLE` and
+  // `BELOW_EARLIEST_AVAILABLE`).
+  //
+  // Servers that predate this field ignore it and list every version, with
+  // `PackageVersion.checkpoint` unset.
+  optional uint64 at_checkpoint = 4;
 }
 
 message ListPackageVersionsResponse {
   // List of all package versions, ordered by version.
+  //
+  // Servers that prune history may omit versions published before their
+  // lowest available checkpoint that were later replaced in place, such as
+  // earlier versions of system packages.
   repeated PackageVersion versions = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
@@ -120,4 +139,8 @@ message PackageVersion {
   optional string package_id = 1;
   // The version number
   optional uint64 version = 2;
+  // The checkpoint in which this version was published. Servers that prune
+  // history may leave this unset for versions published before their lowest
+  // available checkpoint.
+  optional uint64 checkpoint = 3;
 }
