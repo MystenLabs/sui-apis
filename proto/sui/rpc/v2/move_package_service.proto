@@ -26,13 +26,23 @@ message GetPackageRequest {
   // Optional. Return the package in `package_id`'s upgrade lineage that
   // matches one of the following:
   //
-  // - `version`: the package with exactly this version.
+  // - `version`: the package with exactly this version. A server that has
+  //   pruned this version fails with `OUT_OF_RANGE` (see
+  //   `ErrorReason.BELOW_EARLIEST_AVAILABLE`). While it rebuilds history
+  //   after restoring from a snapshot, a version it may still store fails
+  //   with `UNAVAILABLE` and reason `NOT_READY` instead.
   // - `at_checkpoint`: the latest package that existed at or before this
-  //   checkpoint. The checkpoint must be at or below the highest checkpoint
-  //   the server has indexed; larger values fail with `NOT_FOUND` instead of
-  //   resolving to the latest known version, so a successful response is
-  //   exact as of `at_checkpoint`. Servers that prune history may also fail
-  //   with `NOT_FOUND` for checkpoints below their lowest available one.
+  //   checkpoint, so a successful response is exact as of `at_checkpoint`. A
+  //   lineage first published after this checkpoint is `NOT_FOUND`. Outside
+  //   the checkpoints the server has indexed, it fails as a request pinned to
+  //   a checkpoint (see `ErrorReason.ABOVE_LATEST_AVAILABLE` and
+  //   `BELOW_EARLIEST_AVAILABLE`). Servers may fail it with `UNAVAILABLE`
+  //   and reason `NOT_READY` while they rebuild history after restoring from
+  //   a snapshot.
+  //
+  // Servers that are not set up for a selector, such as servers without RPC
+  // indexes or servers that keep only the latest version of each object, may
+  // fail it with `UNIMPLEMENTED` and reason `NOT_SERVED_HERE`.
   //
   // If neither is set, the package stored at `package_id` is returned.
   oneof selector {
