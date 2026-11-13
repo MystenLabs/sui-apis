@@ -13,6 +13,10 @@ service MovePackageService {
   rpc GetDatatype(GetDatatypeRequest) returns (GetDatatypeResponse);
   rpc GetFunction(GetFunctionRequest) returns (GetFunctionResponse);
   rpc ListPackageVersions(ListPackageVersionsRequest) returns (ListPackageVersionsResponse);
+
+  // List the system packages that existed as of a checkpoint, each at its
+  // latest version as of that checkpoint.
+  rpc ListSystemPackages(ListSystemPackagesRequest) returns (ListSystemPackagesResponse);
 }
 
 message GetPackageRequest {
@@ -201,6 +205,29 @@ message ListPackageVersionsResponse {
   // If this field is omitted, there are no subsequent pages. Never set when
   // the request sets `options`.
   optional bytes next_page_token = 2;
+}
+
+message ListSystemPackagesRequest {
+  // Required. Return the system packages as of the end of this checkpoint.
+  // A request without it fails with `INVALID_ARGUMENT`.
+  //
+  // Outside the checkpoints the server has indexed, it fails as a request
+  // pinned to a checkpoint (see `ErrorReason.ABOVE_LATEST_AVAILABLE` and
+  // `BELOW_EARLIEST_AVAILABLE`). Servers that are not set up for reads at a
+  // checkpoint fail it with `UNIMPLEMENTED` and reason `NOT_SERVED_HERE`, and
+  // servers that rebuild history after restoring from a snapshot with
+  // `UNAVAILABLE` and reason `NOT_READY`. Any of these fails the whole
+  // request, so a successful response is the complete set as of
+  // `at_checkpoint`.
+  optional uint64 at_checkpoint = 1;
+}
+
+message ListSystemPackagesResponse {
+  // The system packages that existed at the end of `at_checkpoint`, ordered
+  // by `package_id`, each at its latest version by then. System packages are
+  // upgraded in place, so `original_id` equals `package_id`. `checkpoint` may
+  // be unset as `PackageVersion.checkpoint` describes; `cursor` is never set.
+  repeated PackageVersion system_packages = 1;
 }
 
 // A simplified representation of a package version
