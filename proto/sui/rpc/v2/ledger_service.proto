@@ -14,6 +14,7 @@ import "sui/rpc/v2/event.proto";
 import "sui/rpc/v2/executed_transaction.proto";
 import "sui/rpc/v2/filter.proto";
 import "sui/rpc/v2/object.proto";
+import "sui/rpc/v2/protocol_config.proto";
 import "sui/rpc/v2/query_options.proto";
 
 service LedgerService {
@@ -29,6 +30,23 @@ service LedgerService {
   rpc GetCheckpoint(GetCheckpointRequest) returns (GetCheckpointResponse);
 
   rpc GetEpoch(GetEpochRequest) returns (GetEpochResponse);
+
+  // Get the protocol config of a protocol version.
+  //
+  // The response reflects the highest checkpoint the server has indexed. With
+  // `version` unset, it returns the config of the protocol version in force at
+  // that checkpoint.
+  //
+  // A `version` the chain never ran fails with `NOT_FOUND`: a version above
+  // the one in force at the highest checkpoint the server has indexed, or a
+  // version the chain skipped. A protocol upgrade can advance the version by
+  // more than one, and a skipped version has no config. A fullnode computes
+  // configs from its own binary, so it may also return the config of a
+  // version the chain skipped.
+  //
+  // A server not set up to serve this method fails with `UNIMPLEMENTED` and
+  // reason `NOT_SERVED_HERE`.
+  rpc GetProtocolConfig(GetProtocolConfigRequest) returns (GetProtocolConfigResponse);
 
   // List checkpoints matching the provided filters.
   //
@@ -184,6 +202,21 @@ message GetEpochRequest {
 
 message GetEpochResponse {
   optional Epoch epoch = 1;
+}
+
+message GetProtocolConfigRequest {
+  // The requested protocol version.
+  // If no version is provided, the version in force at the highest checkpoint
+  // the server has indexed is returned.
+  optional uint64 version = 1;
+
+  // Mask specifying which fields to read.
+  // If no mask is specified, defaults to `protocol_version`.
+  optional google.protobuf.FieldMask read_mask = 2;
+}
+
+message GetProtocolConfigResponse {
+  optional ProtocolConfig protocol_config = 1;
 }
 
 // Request message for LedgerService.ListCheckpoints.
