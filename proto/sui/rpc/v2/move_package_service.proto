@@ -96,16 +96,18 @@ message GetFunctionResponse {
 // request with `UNAVAILABLE` and reason `NOT_READY` while they rebuild history
 // after restoring from a snapshot.
 message ListPackageVersionsRequest {
-  // Required. The `storage_id` of any version of the package.
+  // The `storage_id` of any version of a package, to list the versions of
+  // that package's upgrade lineage. When unset, the request lists the
+  // versions of every package by publish checkpoint (see `options`).
   optional string package_id = 1;
 
   // The maximum number of versions to return. The service may return fewer than this value.
   // If unspecified, at most `1000` entries will be returned.
   // The maximum value is `10000`; values above `10000` will be coerced to `10000`.
   //
-  // New clients use `options`. Must be unset when the request sets `options`,
-  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
-  // (`INVALID_ARGUMENT` otherwise).
+  // New clients use `options`. Must be unset when `package_id` is unset or
+  // the request sets `options`, `start_version`, `end_version`,
+  // `start_checkpoint` or `end_checkpoint` (`INVALID_ARGUMENT` otherwise).
   optional uint32 page_size = 2;
 
   // A page token, received from a previous `ListPackageVersions` call.
@@ -120,30 +122,33 @@ message ListPackageVersionsRequest {
   // token whose next page would skip versions the server does not retain
   // fails with `OUT_OF_RANGE` (see `options`).
   //
-  // New clients use `options`. Must be unset when the request sets `options`,
-  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
-  // (`INVALID_ARGUMENT` otherwise).
+  // New clients use `options`. Must be unset when `package_id` is unset or
+  // the request sets `options`, `start_version`, `end_version`,
+  // `start_checkpoint` or `end_checkpoint` (`INVALID_ARGUMENT` otherwise).
   optional bytes page_token = 3;
 
   reserved 4;
 
-  // Optional. Cursor paging (see `QueryOptions`). A request with
-  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
-  // set pages this way even without `options`. `page_size` and `page_token`
-  // must then be unset. Every response sets `end` and never
+  // Optional. Cursor paging (see `QueryOptions`). A request with `package_id`
+  // unset, or with `start_version`, `end_version`, `start_checkpoint` or
+  // `end_checkpoint` set, pages this way even without `options`. `page_size`
+  // and `page_token` must then be unset. Every response sets `end` and never
   // `next_page_token`. Servers that predate these fields ignore them and
   // never set `end`.
   //
-  // This listing is ordered by ascending version. `limit` defaults to `1000`
-  // and is coerced to at most `10000`. Every page but the last holds `limit`
-  // versions. Resume from the last version's `cursor`, as `after` when
-  // ascending or `before` when descending. A malformed cursor, or one for
-  // another package, fails with `INVALID_ARGUMENT`. A cursor also records the
-  // highest checkpoint the server that returned it had indexed.
+  // With `package_id` set, this listing is ordered by ascending version. With
+  // `package_id` unset, it is ordered by ascending publish checkpoint, then
+  // `original_id`, then version. `limit` defaults to `1000` and is coerced to
+  // at most `10000`. Every page but the last holds `limit` versions. Resume
+  // from the last version's `cursor`, as `after` when ascending or `before`
+  // when descending. A malformed cursor, or one from another listing (of
+  // another package, or of every package when `package_id` is set, or vice
+  // versa), fails with `INVALID_ARGUMENT`. A cursor also records the highest
+  // checkpoint the server that returned it had indexed.
   //
-  // A package this server has not indexed is `NOT_FOUND`, as in `GetPackage`,
-  // unless a cursor comes from a server that has indexed further; such a
-  // cursor is handled as a cursor past the tip.
+  // With `package_id` set, a package this server has not indexed is
+  // `NOT_FOUND`, as in `GetPackage`, unless a cursor comes from a server that
+  // has indexed further; such a cursor is handled as a cursor past the tip.
   //
   // Past what this server has indexed, the listing follows the
   // `LedgerService` `List*` RPCs (see `ErrorReason.ABOVE_LATEST_AVAILABLE`).
@@ -175,22 +180,36 @@ message ListPackageVersionsRequest {
   optional QueryOptions options = 5;
 
   // Optional. Start of the version range to list (inclusive). Intersects with
-  // every other bound.
+  // every other bound. Must be unset when `package_id` is unset.
   optional uint64 start_version = 6;
 
   // Optional. End of the version range to list (exclusive). Intersects with
   // every other bound. Below `start_version` it fails with
-  // `INVALID_ARGUMENT`; equal to it, the range lists nothing.
+  // `INVALID_ARGUMENT`; equal to it, the range lists nothing. Must be unset
+  // when `package_id` is unset.
   optional uint64 end_version = 7;
 
   // Optional. Start of the checkpoint range to list (inclusive): only
   // versions published in this checkpoint or later. The listing covers the
-  // versions published in the range, not the package's state at one
+  // versions published in the range, not the packages' state at one
   // checkpoint. Intersects with every other bound. Unless the range is
   // empty, servers that prune history fail with `OUT_OF_RANGE` and reason
   // `BELOW_EARLIEST_AVAILABLE` for a checkpoint below the lowest one they can
   // list every publish from, unless an `after` cursor bounds the listing at
   // or above that checkpoint.
+  //
+  // In a listing of every package, if unset, the listing starts at that
+  // checkpoint, which is genesis on servers that keep full history, and
+  // covers the publishes from that checkpoint on: a descending listing
+  // without an `after` cursor at or above that checkpoint ends there with a
+  // short last page. With `start_checkpoint` unset, a listing in either
+  // order after an `after` cursor below that checkpoint fails with
+  // `OUT_OF_RANGE` and reason `BELOW_EARLIEST_AVAILABLE` rather than skip
+  // the publishes in between. A `before` cursor below that checkpoint leaves
+  // nothing to list.
+  //
+  // Servers that predate this field fail requests with `package_id` unset
+  // with `INVALID_ARGUMENT`.
   optional uint64 start_checkpoint = 8;
 
   // Optional. End of the checkpoint range to list (exclusive): only versions
@@ -209,12 +228,9 @@ message ListPackageVersionsRequest {
 }
 
 message ListPackageVersionsResponse {
-  // The package's versions in this listing's order (ascending version), or
-  // in reverse when `options.ordering` is `ORDERING_DESCENDING`.
-  //
-  // Servers that prune history may omit versions published before their
-  // lowest available checkpoint that were later replaced in place, such as
-  // earlier versions of system packages.
+  // The listed versions in this listing's order (see
+  // `ListPackageVersionsRequest.options`), or in reverse when
+  // `options.ordering` is `ORDERING_DESCENDING`.
   repeated PackageVersion versions = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
@@ -229,7 +245,8 @@ message ListPackageVersionsResponse {
   // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached `end_version` or
   //   `start_version`, the end of the checkpoint range, or, descending, the
   //   package's first version (on a server that prunes history, the oldest
-  //   version it stores).
+  //   version it stores) or, listing every package, the lowest checkpoint
+  //   the server can list every publish from.
   // - `QUERY_END_REASON_CURSOR_BOUND`: reached the far cursor (`before`
   //   ascending, `after` descending).
   // - `QUERY_END_REASON_LEDGER_TIP`: an ascending listing reached the highest
@@ -251,4 +268,7 @@ message PackageVersion {
   // The opaque position of this version in the listing, for use as
   // `ListPackageVersionsRequest.options.after` or `options.before`.
   optional bytes cursor = 4;
+  // The `original_id` of this version's package: the `storage_id` of its
+  // first version, shared by every version in its upgrade lineage.
+  optional string original_id = 5;
 }
