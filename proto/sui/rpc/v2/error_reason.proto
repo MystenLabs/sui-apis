@@ -127,7 +127,8 @@ enum ErrorReason {
   // `ListPackageVersions` follows these rules for its checkpoint range and
   // cursors; see `ListPackageVersionsRequest.options`. When it refuses a
   // cursor for the version the cursor names, `requestedCheckpoint` is
-  // `firstUnavailableCheckpoint`.
+  // `firstUnavailableCheckpoint`; for a cursor from the listing of every
+  // package, it is the publish checkpoint the cursor names.
   //
   // Example of an ErrorInfo for a descending query's `before` cursor at
   // checkpoint 1205, sent to a server whose latest indexed checkpoint is 1199:
