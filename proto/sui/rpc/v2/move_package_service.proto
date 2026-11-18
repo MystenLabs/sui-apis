@@ -6,6 +6,7 @@ syntax = "proto3";
 package sui.rpc.v2;
 
 import "sui/rpc/v2/move_package.proto";
+import "sui/rpc/v2/query_options.proto";
 
 service MovePackageService {
   rpc GetPackage(GetPackageRequest) returns (GetPackageResponse);
@@ -101,6 +102,10 @@ message ListPackageVersionsRequest {
   // The maximum number of versions to return. The service may return fewer than this value.
   // If unspecified, at most `1000` entries will be returned.
   // The maximum value is `10000`; values above `10000` will be coerced to `10000`.
+  //
+  // New clients use `options`. Must be unset when the request sets `options`,
+  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
+  // (`INVALID_ARGUMENT` otherwise).
   optional uint32 page_size = 2;
 
   // A page token, received from a previous `ListPackageVersions` call.
@@ -108,11 +113,104 @@ message ListPackageVersionsRequest {
   //
   // When paginating, all other parameters provided to `ListPackageVersions` must
   // match the call that provided the page token.
+  //
+  // A page token names the first version of the next page, so the client
+  // holds the version below it. A page token naming a version past what this
+  // server has indexed gets an empty page without `next_page_token`. A page
+  // token whose next page would skip versions the server does not retain
+  // fails with `OUT_OF_RANGE` (see `options`).
+  //
+  // New clients use `options`. Must be unset when the request sets `options`,
+  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
+  // (`INVALID_ARGUMENT` otherwise).
   optional bytes page_token = 3;
+
+  reserved 4;
+
+  // Optional. Cursor paging (see `QueryOptions`). A request with
+  // `start_version`, `end_version`, `start_checkpoint` or `end_checkpoint`
+  // set pages this way even without `options`. `page_size` and `page_token`
+  // must then be unset. Every response sets `end` and never
+  // `next_page_token`. Servers that predate these fields ignore them and
+  // never set `end`.
+  //
+  // This listing is ordered by ascending version. `limit` defaults to `1000`
+  // and is coerced to at most `10000`. Every page but the last holds `limit`
+  // versions. Resume from the last version's `cursor`, as `after` when
+  // ascending or `before` when descending. A malformed cursor, or one for
+  // another package, fails with `INVALID_ARGUMENT`. A cursor also records the
+  // highest checkpoint the server that returned it had indexed.
+  //
+  // A package this server has not indexed is `NOT_FOUND`, as in `GetPackage`,
+  // unless a cursor comes from a server that has indexed further; such a
+  // cursor is handled as a cursor past the tip.
+  //
+  // Past what this server has indexed, the listing follows the
+  // `LedgerService` `List*` RPCs (see `ErrorReason.ABOVE_LATEST_AVAILABLE`).
+  // A descending listing fails with `OUT_OF_RANGE` when its `end_checkpoint`
+  // is above `firstUnavailableCheckpoint` (one above the highest checkpoint
+  // the server has indexed), or, with `end_checkpoint` unset, when its
+  // `start_checkpoint` is at or above `firstUnavailableCheckpoint` or a
+  // cursor names a version this server has not indexed. An ascending listing
+  // is never refused for these: unless `end_version` or a `before` cursor
+  // ends it first, it lists through the highest indexed checkpoint and ends
+  // with `QUERY_END_REASON_LEDGER_TIP`.
+  //
+  // On a server that prunes history, a listing of one package in cursor
+  // paging with `start_checkpoint` unset covers only the versions the server
+  // stores: a version range that starts below the oldest of them starts at
+  // it, so a descending listing without an `after` cursor ends there with a
+  // short last page, and one with only a `before` cursor at or below that
+  // version lists nothing. Nothing marks that version as different from a
+  // package's first version.
+  //
+  // A request that continues a listing names a version the client already
+  // holds: the version an `after` cursor names, or the version below a
+  // `page_token`'s. When the range starts just above that version (no higher
+  // `start_version` or `start_checkpoint` bounds it) and versions between it
+  // and the oldest version the server stores are gone, the request fails with
+  // `OUT_OF_RANGE` and reason `BELOW_EARLIEST_AVAILABLE` in either ordering
+  // rather than skip them. Such a listing can only be completed from a server
+  // that retains those versions.
+  optional QueryOptions options = 5;
+
+  // Optional. Start of the version range to list (inclusive). Intersects with
+  // every other bound.
+  optional uint64 start_version = 6;
+
+  // Optional. End of the version range to list (exclusive). Intersects with
+  // every other bound. Below `start_version` it fails with
+  // `INVALID_ARGUMENT`; equal to it, the range lists nothing.
+  optional uint64 end_version = 7;
+
+  // Optional. Start of the checkpoint range to list (inclusive): only
+  // versions published in this checkpoint or later. The listing covers the
+  // versions published in the range, not the package's state at one
+  // checkpoint. Intersects with every other bound. Unless the range is
+  // empty, servers that prune history fail with `OUT_OF_RANGE` and reason
+  // `BELOW_EARLIEST_AVAILABLE` for a checkpoint below the lowest one they can
+  // list every publish from, unless an `after` cursor bounds the listing at
+  // or above that checkpoint.
+  optional uint64 start_checkpoint = 8;
+
+  // Optional. End of the checkpoint range to list (exclusive): only versions
+  // published before this checkpoint. Below `start_checkpoint` it fails with
+  // `INVALID_ARGUMENT`; equal to it, the range lists nothing and is never
+  // refused as pruned. If unset, the range ends at the highest checkpoint the
+  // server has indexed. In a request with no lower bound of its own (no
+  // `start_checkpoint` and no `after` cursor), an `end_checkpoint` at or
+  // below the lowest checkpoint the server can list every publish from fails
+  // with `OUT_OF_RANGE` and reason `BELOW_EARLIEST_AVAILABLE`.
+  //
+  // With `end_checkpoint` set, `QUERY_END_REASON_LEDGER_TIP` means the server
+  // stopped at its highest indexed checkpoint, short of `end_checkpoint`:
+  // retry later or on another replica.
+  optional uint64 end_checkpoint = 9;
 }
 
 message ListPackageVersionsResponse {
-  // List of all package versions, ordered by version.
+  // The package's versions in this listing's order (ascending version), or
+  // in reverse when `options.ordering` is `ORDERING_DESCENDING`.
   //
   // Servers that prune history may omit versions published before their
   // lowest available checkpoint that were later replaced in place, such as
@@ -120,8 +218,24 @@ message ListPackageVersionsResponse {
   repeated PackageVersion versions = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
-  // If this field is omitted, there are no subsequent pages.
+  // If this field is omitted, there are no subsequent pages. Never set in
+  // cursor paging (see `ListPackageVersionsRequest.options`).
   optional bytes next_page_token = 2;
+
+  // Set on every response in cursor paging (see
+  // `ListPackageVersionsRequest.options`), and never otherwise. A full page
+  // ends with `QUERY_END_REASON_ITEM_LIMIT`; a shorter one, the last, with:
+  //
+  // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached `end_version` or
+  //   `start_version`, the end of the checkpoint range, or, descending, the
+  //   package's first version (on a server that prunes history, the oldest
+  //   version it stores).
+  // - `QUERY_END_REASON_CURSOR_BOUND`: reached the far cursor (`before`
+  //   ascending, `after` descending).
+  // - `QUERY_END_REASON_LEDGER_TIP`: an ascending listing reached the highest
+  //   checkpoint the server has indexed, below `end_checkpoint` if set; later
+  //   publishes can extend it.
+  optional QueryEnd end = 3;
 }
 
 // A simplified representation of a package version
@@ -134,4 +248,7 @@ message PackageVersion {
   // history may leave this unset for versions published before their lowest
   // available checkpoint.
   optional uint64 checkpoint = 3;
+  // The opaque position of this version in the listing, for use as
+  // `ListPackageVersionsRequest.options.after` or `options.before`.
+  optional bytes cursor = 4;
 }
