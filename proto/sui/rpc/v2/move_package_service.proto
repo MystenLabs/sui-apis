@@ -90,6 +90,10 @@ message GetFunctionResponse {
   optional FunctionDescriptor function = 1;
 }
 
+// Servers without the indexes this method needs fail it with `UNIMPLEMENTED`
+// and reason `NOT_SERVED_HERE`. Servers may fail any `ListPackageVersions`
+// request with `UNAVAILABLE` and reason `NOT_READY` while they rebuild history
+// after restoring from a snapshot.
 message ListPackageVersionsRequest {
   // Required. The `storage_id` of any version of the package.
   optional string package_id = 1;
@@ -109,6 +113,10 @@ message ListPackageVersionsRequest {
 
 message ListPackageVersionsResponse {
   // List of all package versions, ordered by version.
+  //
+  // Servers that prune history may omit versions published before their
+  // lowest available checkpoint that were later replaced in place, such as
+  // earlier versions of system packages.
   repeated PackageVersion versions = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
@@ -122,4 +130,8 @@ message PackageVersion {
   optional string package_id = 1;
   // The version number
   optional uint64 version = 2;
+  // The checkpoint in which this version was published. Servers that prune
+  // history may leave this unset for versions published before their lowest
+  // available checkpoint.
+  optional uint64 checkpoint = 3;
 }
