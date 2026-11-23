@@ -174,18 +174,15 @@ message GetBalanceResponse {
 
 // Request message for `StateService.BatchGetBalances`.
 message BatchGetBalancesRequest {
-  // The `(owner, coin_type)` balance keys to look up. Servers accept at least
-  // `200` requests per batch and reject any batch above their configured limit
-  // with `INVALID_ARGUMENT`. Per-item `at_checkpoint` on entries in `requests`
-  // must be unset (`INVALID_ARGUMENT` otherwise); use
-  // `BatchGetBalancesRequest.at_checkpoint` for the whole batch. A malformed
-  // `owner` or `coin_type` fails the whole batch with `INVALID_ARGUMENT`.
+  // The balance requests to look up. Each request carries its own
+  // `at_checkpoint`, so a batch may read balances at one checkpoint, across
+  // different checkpoints, or from current state (when unset).
+  //
+  // Servers accept at least `200` requests per batch and reject any batch
+  // above their configured limit with `INVALID_ARGUMENT`. A malformed `owner`
+  // or `coin_type`, or any per-item `at_checkpoint` refusal (see
+  // `GetBalanceRequest.at_checkpoint`), fails the whole batch.
   repeated GetBalanceRequest requests = 1;
-
-  // Optional. Read every balance in the batch at the end of this checkpoint,
-  // within the checkpoints the server retains for state reads. When unset,
-  // reads current state. Refusal rules match `GetBalanceRequest.at_checkpoint`.
-  optional uint64 at_checkpoint = 2;
 }
 
 // Response message for `StateService.BatchGetBalances`.
