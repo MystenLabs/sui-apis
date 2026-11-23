@@ -15,7 +15,7 @@ import "sui/rpc/v2/query_options.proto";
 service StateService {
   rpc ListDynamicFields(ListDynamicFieldsRequest) returns (ListDynamicFieldsResponse);
   rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
-  rpc ListObjectsByType(ListObjectsByTypeRequest) returns (ListObjectsByTypeResponse);
+  rpc ListObjects(ListObjectsRequest) returns (stream ListObjectsResponse);
   rpc GetCoinInfo(GetCoinInfoRequest) returns (GetCoinInfoResponse);
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
   rpc BatchGetBalances(BatchGetBalancesRequest) returns (BatchGetBalancesResponse);
@@ -619,35 +619,30 @@ message ListOwnedObjectsResponse {
   optional QueryEnd end = 4;
 }
 
-// Request message for `StateService.ListObjectsByType`.
-message ListObjectsByTypeRequest {
-  // Required. Move struct type filter accepting the specificity levels of
-  // `ObjectTypeFilter`:
+// Request message for `StateService.ListObjects`.
+message ListObjectsRequest {
+  // Optional. DNF filter over live Move struct objects (see `ObjectFilter`).
+  // Matching objects are returned in the same order as without a filter. If
+  // absent, all live Move struct objects as of the checkpoint are listed
+  // (packages are not Move struct objects; use
+  // `MovePackageService.ListPackageVersions` for packages).
   //
-  //   "0xaddr"                       -> objects whose type is defined at this address
-  //   "0xaddr::module"               -> objects whose type is in this module
-  //   "0xaddr::module::Name"         -> objects with this type name (any instantiation)
-  //   "0xaddr::module::Name<T1, T2>" -> objects with this exact generic instantiation
-  //
-  // The address is the one in the type's canonical form: the package that
-  // first defined the type, not the package version that created the object.
-  // Packages are not Move struct objects and are not included in this listing.
-  optional string object_type = 1;
+  // The service rejects a filter with more literals in total than it allows
+  // with `INVALID_ARGUMENT`.
+  optional ObjectFilter filter = 1;
 
-  // Mask specifying which fields to read.
+  // Mask specifying which fields to read on each `Object`.
   // If no mask is specified, defaults to `object_id,version,object_type`.
   optional google.protobuf.FieldMask read_mask = 2;
 
-  // Optional. Cursor paging (see `QueryOptions`). `ListObjectsByType` always
-  // pages by cursor, whether or not `options` is set: every response sets
-  // `cursors` and `end`.
+  // Optional. Cursor paging (see `QueryOptions`).
   //
   // Canonical order is ascending by Move type (ordered by the BCS encoding of
   // its `StructTag`, not its string form), then by `ObjectId` bytes. With
   // `options.ordering` set to `ORDERING_DESCENDING`, items are returned in
   // reverse order. `limit` defaults to `50` and is coerced to at most `1000`.
-  // Resume from the last item's entry in `ListObjectsByTypeResponse.cursors`,
-  // as `after` when ascending or `before` when descending.
+  // Resume from the last item frame's `ListObjectsResponse.cursor`, as `after`
+  // when ascending or `before` when descending.
   //
   // Every cursor records the checkpoint of the listing's first page, so every
   // page of one listing reads the state as of the same checkpoint. A cursor
@@ -683,26 +678,29 @@ message ListObjectsByTypeRequest {
   optional uint64 at_checkpoint = 4;
 }
 
-// Response message for `StateService.ListObjectsByType`.
-message ListObjectsByTypeResponse {
-  // Page of matching objects, in canonical order (see
-  // `ListObjectsByTypeRequest.options`), or in reverse when `options.ordering`
-  // is `ORDERING_DESCENDING`.
-  repeated Object objects = 1;
+// Response frame for `StateService.ListObjects`.
+//
+// A frame that delivers an item sets `object` and `cursor`, in canonical order
+// (see `ListObjectsRequest.options`) or in reverse for `ORDERING_DESCENDING`.
+// `end` is set exactly once, on the final frame of a successful stream: with
+// `QUERY_END_REASON_ITEM_LIMIT` it rides on the last item's frame, and
+// otherwise the final frame leaves `object` and `cursor` unset. In this
+// listing:
+//
+// - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached the end of the matching
+//   objects.
+// - `QUERY_END_REASON_CURSOR_BOUND`: reached the far cursor (`before`
+//   ascending, `after` descending).
+message ListObjectsResponse {
+  // The matching object, with the fields selected by `read_mask`. Unset on a
+  // final frame that carries only `end`.
+  optional Object object = 1;
 
-  // Opaque cursor for each entry in `objects`, in matching index order, for
-  // use as `ListObjectsByTypeRequest.options.after` or `options.before`.
-  repeated bytes cursors = 2;
+  // Opaque position of this object in the listing, for use as
+  // `ListObjectsRequest.options.after` or `options.before`. Set on every frame
+  // that delivers an `object`; unset on a final frame without an `object`.
+  optional bytes cursor = 2;
 
-  // Set on every response. A page that stops at `options.limit` or the
-  // server's response-size limit ends with `QUERY_END_REASON_ITEM_LIMIT` (so
-  // a page shorter than `options.limit` can still end with
-  // `QUERY_END_REASON_ITEM_LIMIT`). A page that exhausts its interval ends
-  // with:
-  //
-  // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached the end of the matching
-  //   objects.
-  // - `QUERY_END_REASON_CURSOR_BOUND`: reached the far cursor (`before`
-  //   ascending, `after` descending).
+  // Set exactly once, on the final frame of a successful stream.
   optional QueryEnd end = 3;
 }

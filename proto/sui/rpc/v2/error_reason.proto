@@ -205,8 +205,8 @@ enum ErrorReason {
   // `StateService` requests pinned to a checkpoint by `at_checkpoint` or by a
   // cursor return this with `OUT_OF_RANGE` when that checkpoint is below the
   // server's retained checkpoint range for state reads, or, for methods that
-  // load objects (`ListOwnedObjects`, `ListObjectsByType`,
-  // `ListDynamicFields`), below the server's object pruning floor.
+  // load objects (`ListOwnedObjects`, `ListObjects`, `ListDynamicFields`),
+  // below the server's object pruning floor.
   //
   // Pruned data does not come back, so the same request fails the same way
   // on this server. A client can send it to a server that retains the data,
