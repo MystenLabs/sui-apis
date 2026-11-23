@@ -144,22 +144,24 @@ message GetBalanceRequest {
   // Required. The type names for the coin (e.g., 0x2::sui::SUI).
   optional string coin_type = 2;
 
-  // Optional. Read the balance at the end of this checkpoint, from the
-  // server's retained snapshot window. When unset, reads current state.
+  // Optional. Read the balance at the end of this checkpoint, within the
+  // checkpoints the server retains for state reads. When unset, reads current
+  // state.
   //
   // Refusals:
-  // - Below the server's configured snapshot window: `OUT_OF_RANGE` with
-  //   reason `BELOW_EARLIEST_AVAILABLE`.
-  // - Inside the configured snapshot window but missing on this replica (for
-  //   example while its window refills after a restart): `UNAVAILABLE` with
-  //   reason `NOT_READY` (`cause`: `"snapshot_missing"`); retry, preferably on
-  //   another replica.
-  // - Above the server's newest retained snapshot: `OUT_OF_RANGE` with reason
-  //   `ABOVE_LATEST_AVAILABLE` (`bound`: `"at_checkpoint"`).
-  // - Server without RPC indexes or snapshots enabled: `UNIMPLEMENTED` with
-  //   reason `NOT_SERVED_HERE`.
-  // - Before the server's live indexes have a snapshot ready: `UNAVAILABLE`
-  //   with reason `NOT_READY`.
+  // - Below the server's retained checkpoint range for state reads:
+  //   `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
+  // - Within the retained checkpoint range, but not yet servable on this
+  //   replica (for example while refilling after a restart): `UNAVAILABLE`
+  //   with reason `NOT_READY` (`cause`: `"checkpoint_unavailable"`); retry,
+  //   preferably on another replica.
+  // - Above the highest checkpoint the server can serve for state reads:
+  //   `OUT_OF_RANGE` with reason `ABOVE_LATEST_AVAILABLE` (`bound`:
+  //   `"at_checkpoint"`).
+  // - Server not set up for checkpoint-pinned state reads: `UNIMPLEMENTED`
+  //   with reason `NOT_SERVED_HERE`.
+  // - Before the server's state indexes have any checkpoint ready:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"index_empty"`).
   optional uint64 at_checkpoint = 3;
 }
 
@@ -173,16 +175,16 @@ message GetBalanceResponse {
 // Request message for `StateService.BatchGetBalances`.
 message BatchGetBalancesRequest {
   // The `(owner, coin_type)` balance keys to look up. Servers accept at least
-  // `200` requests per batch and reject larger batches with
-  // `INVALID_ARGUMENT`. Per-item `at_checkpoint` on entries in `requests`
+  // `200` requests per batch and reject any batch above their configured limit
+  // with `INVALID_ARGUMENT`. Per-item `at_checkpoint` on entries in `requests`
   // must be unset (`INVALID_ARGUMENT` otherwise); use
   // `BatchGetBalancesRequest.at_checkpoint` for the whole batch. A malformed
   // `owner` or `coin_type` fails the whole batch with `INVALID_ARGUMENT`.
   repeated GetBalanceRequest requests = 1;
 
   // Optional. Read every balance in the batch at the end of this checkpoint,
-  // from the server's retained snapshot window. When unset, reads current
-  // state. Refusal rules match `GetBalanceRequest.at_checkpoint`.
+  // within the checkpoints the server retains for state reads. When unset,
+  // reads current state. Refusal rules match `GetBalanceRequest.at_checkpoint`.
   optional uint64 at_checkpoint = 2;
 }
 
@@ -209,9 +211,9 @@ message ListBalancesRequest {
   // Provide this to retrieve the subsequent page.
   //
   // When paginating, all other parameters provided to `ListBalances` must
-  // match the call that provided the page token. A page token minted from a
-  // snapshot carries that snapshot's checkpoint; setting `at_checkpoint` to a
-  // different checkpoint fails with `INVALID_ARGUMENT`.
+  // match the call that provided the page token. A checkpoint-pinned page
+  // token carries its checkpoint; setting `at_checkpoint` to a different
+  // checkpoint fails with `INVALID_ARGUMENT`.
   //
   // Must be unset when `options` is set (`INVALID_ARGUMENT` otherwise).
   optional bytes page_token = 3;
@@ -228,30 +230,35 @@ message ListBalancesRequest {
   // item's entry in `ListBalancesResponse.cursors`, as `after` when ascending
   // or `before` when descending.
   //
-  // Every cursor records the snapshot checkpoint of the listing's first page,
-  // so every page of one listing reads the same snapshot. A cursor whose
-  // checkpoint differs from `at_checkpoint`, `after` and `before` cursors from
-  // different checkpoints, a malformed cursor, or a cursor from another
-  // listing or owner fails with `INVALID_ARGUMENT`.
+  // Every cursor records the checkpoint of the listing's first page, so every
+  // page of one listing reads the state as of the same checkpoint. A cursor
+  // whose checkpoint differs from `at_checkpoint`, `after` and `before`
+  // cursors from different checkpoints, a malformed cursor, or a cursor from
+  // another listing or owner fails with `INVALID_ARGUMENT`.
   optional QueryOptions options = 4;
 
-  // Optional. Read balances at the end of this checkpoint, from the server's
-  // retained snapshot window. When `at_checkpoint`, `options`, and a
-  // snapshot-carrying `page_token` are all unset, reads current state.
+  // Optional. Read balances at the end of this checkpoint, within the
+  // checkpoints the server retains for state reads. When `options` is set
+  // without `at_checkpoint` or a cursor, the server reads as of the highest
+  // checkpoint it can serve for state reads (or, when reading under a
+  // checkpoint floor, the admitted checkpoint) and records that checkpoint in
+  // the returned cursors. When `at_checkpoint`, `options`, and a
+  // checkpoint-pinned `page_token` are all unset, reads current state.
   //
   // Refusals for `at_checkpoint` or a cursor's checkpoint:
-  // - Below the server's configured snapshot window: `OUT_OF_RANGE` with
-  //   reason `BELOW_EARLIEST_AVAILABLE`.
-  // - Inside the configured snapshot window but missing on this replica (for
-  //   example while its window refills after a restart): `UNAVAILABLE` with
-  //   reason `NOT_READY` (`cause`: `"snapshot_missing"`); retry, preferably on
-  //   another replica.
-  // - Above the server's newest retained snapshot: `OUT_OF_RANGE` with reason
-  //   `ABOVE_LATEST_AVAILABLE` (`bound`: `"at_checkpoint"` or `"cursor"`).
-  // - Server without RPC indexes or snapshots enabled: `UNIMPLEMENTED` with
-  //   reason `NOT_SERVED_HERE`.
-  // - Before the server's live indexes have a snapshot ready: `UNAVAILABLE`
-  //   with reason `NOT_READY`.
+  // - Below the server's retained checkpoint range for state reads:
+  //   `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
+  // - Within the retained checkpoint range, but not yet servable on this
+  //   replica (for example while refilling after a restart): `UNAVAILABLE`
+  //   with reason `NOT_READY` (`cause`: `"checkpoint_unavailable"`); retry,
+  //   preferably on another replica.
+  // - Above the highest checkpoint the server can serve for state reads:
+  //   `OUT_OF_RANGE` with reason `ABOVE_LATEST_AVAILABLE` (`bound`:
+  //   `"at_checkpoint"` or `"cursor"`).
+  // - Server not set up for checkpoint-pinned state reads: `UNIMPLEMENTED`
+  //   with reason `NOT_SERVED_HERE`.
+  // - Before the server's state indexes have any checkpoint ready:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"index_empty"`).
   optional uint64 at_checkpoint = 5;
 }
 
@@ -317,9 +324,9 @@ message ListDynamicFieldsRequest {
   // Provide this to retrieve the subsequent page.
   //
   // When paginating, all other parameters provided to `ListDynamicFields` must
-  // match the call that provided the page token. A page token minted from a
-  // snapshot carries that snapshot's checkpoint; setting `at_checkpoint` to a
-  // different checkpoint fails with `INVALID_ARGUMENT`.
+  // match the call that provided the page token. A checkpoint-pinned page
+  // token carries its checkpoint; setting `at_checkpoint` to a different
+  // checkpoint fails with `INVALID_ARGUMENT`.
   //
   // Must be unset when `options` is set (`INVALID_ARGUMENT` otherwise).
   optional bytes page_token = 3;
@@ -351,36 +358,42 @@ message ListDynamicFieldsRequest {
   // `ListDynamicFieldsResponse.cursors`, as `after` when ascending or `before`
   // when descending.
   //
-  // Every cursor records the snapshot checkpoint of the listing's first page,
-  // so every page of one listing reads the same snapshot. A cursor whose
-  // checkpoint differs from `at_checkpoint`, `after` and `before` cursors from
-  // different checkpoints, a malformed cursor, or a cursor from another
-  // listing or parent fails with `INVALID_ARGUMENT`.
+  // Every cursor records the checkpoint of the listing's first page, so every
+  // page of one listing reads the state as of the same checkpoint. A cursor
+  // whose checkpoint differs from `at_checkpoint`, `after` and `before`
+  // cursors from different checkpoints, a malformed cursor, or a cursor from
+  // another listing or parent fails with `INVALID_ARGUMENT`.
   optional QueryOptions options = 6;
 
-  // Optional. Read dynamic fields at the end of this checkpoint, from the
-  // server's retained snapshot window. When reading from a snapshot
-  // (`at_checkpoint`, `options`, or a snapshot-carrying `page_token`), the
+  // Optional. Read dynamic fields at the end of this checkpoint, within the
+  // checkpoints the server retains for state reads. When `options` is set
+  // without `at_checkpoint` or a cursor, the server reads as of the highest
+  // checkpoint it can serve for state reads (or, when reading under a
+  // checkpoint floor, the admitted checkpoint) and records that checkpoint in
+  // the returned cursors. When the read is pinned to a checkpoint
+  // (`at_checkpoint`, `options`, or a checkpoint-pinned `page_token`), the
   // field object and any dynamic object field's child object are loaded at the
-  // exact versions recorded in that snapshot. When none of these is set, reads
+  // exact versions as of that checkpoint. When none of these is set, reads
   // current state, where an entry whose object is removed between the index
   // read and the object load may be skipped.
   //
   // Refusals for `at_checkpoint` or a cursor's checkpoint:
-  // - Below the server's configured snapshot window or object pruning floor:
-  //   `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
-  // - Inside the configured snapshot window but missing on this replica (for
-  //   example while its window refills after a restart): `UNAVAILABLE` with
-  //   reason `NOT_READY` (`cause`: `"snapshot_missing"`); retry, preferably on
-  //   another replica.
-  // - Indexed object version missing during a snapshot read: `UNAVAILABLE`
-  //   with reason `NOT_READY` (never silently skipped).
-  // - Above the server's newest retained snapshot: `OUT_OF_RANGE` with reason
-  //   `ABOVE_LATEST_AVAILABLE` (`bound`: `"at_checkpoint"` or `"cursor"`).
-  // - Server without RPC indexes or snapshots enabled: `UNIMPLEMENTED` with
-  //   reason `NOT_SERVED_HERE`.
-  // - Before the server's live indexes have a snapshot ready: `UNAVAILABLE`
-  //   with reason `NOT_READY`.
+  // - Below the server's retained checkpoint range for state reads or object
+  //   pruning floor: `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
+  // - Within the retained checkpoint range, but not yet servable on this
+  //   replica (for example while refilling after a restart): `UNAVAILABLE`
+  //   with reason `NOT_READY` (`cause`: `"checkpoint_unavailable"`); retry,
+  //   preferably on another replica.
+  // - Indexed object version missing during a checkpoint-pinned read:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"pruning_race"`, never
+  //   silently skipped).
+  // - Above the highest checkpoint the server can serve for state reads:
+  //   `OUT_OF_RANGE` with reason `ABOVE_LATEST_AVAILABLE` (`bound`:
+  //   `"at_checkpoint"` or `"cursor"`).
+  // - Server not set up for checkpoint-pinned state reads: `UNIMPLEMENTED`
+  //   with reason `NOT_SERVED_HERE`.
+  // - Before the server's state indexes have any checkpoint ready:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"index_empty"`).
   optional uint64 at_checkpoint = 7;
 }
 
@@ -402,8 +415,11 @@ message ListDynamicFieldsResponse {
   repeated bytes cursors = 3;
 
   // Set on every response when `ListDynamicFieldsRequest.options` is set, and
-  // never otherwise. A full page ends with `QUERY_END_REASON_ITEM_LIMIT`; a
-  // shorter page, the last, with:
+  // never otherwise. A page that stops at `options.limit` or the server's
+  // response-size limit ends with `QUERY_END_REASON_ITEM_LIMIT` (so a page
+  // shorter than `options.limit` can still end with
+  // `QUERY_END_REASON_ITEM_LIMIT`). A page that exhausts its interval ends
+  // with:
   //
   // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached the end of the matching
   //   dynamic fields.
@@ -472,9 +488,9 @@ message ListOwnedObjectsRequest {
   // Provide this to retrieve the subsequent page.
   //
   // When paginating, all other parameters provided to `ListOwnedObjects` must
-  // match the call that provided the page token. A page token minted from a
-  // snapshot carries that snapshot's checkpoint; setting `at_checkpoint` to a
-  // different checkpoint fails with `INVALID_ARGUMENT`.
+  // match the call that provided the page token. A checkpoint-pinned page
+  // token carries its checkpoint; setting `at_checkpoint` to a different
+  // checkpoint fails with `INVALID_ARGUMENT`.
   //
   // Must be unset when `options` is set (`INVALID_ARGUMENT` otherwise).
   optional bytes page_token = 3;
@@ -520,35 +536,41 @@ message ListOwnedObjectsRequest {
   // item's entry in `ListOwnedObjectsResponse.cursors`, as `after` when
   // ascending or `before` when descending.
   //
-  // Every cursor records the snapshot checkpoint of the listing's first page,
-  // so every page of one listing reads the same snapshot. A cursor whose
-  // checkpoint differs from `at_checkpoint`, `after` and `before` cursors from
-  // different checkpoints, a malformed cursor, or a cursor from another
-  // listing or owner fails with `INVALID_ARGUMENT`.
+  // Every cursor records the checkpoint of the listing's first page, so every
+  // page of one listing reads the state as of the same checkpoint. A cursor
+  // whose checkpoint differs from `at_checkpoint`, `after` and `before`
+  // cursors from different checkpoints, a malformed cursor, or a cursor from
+  // another listing or owner fails with `INVALID_ARGUMENT`.
   optional QueryOptions options = 7;
 
-  // Optional. Read objects at the end of this checkpoint, from the server's
-  // retained snapshot window. When reading from a snapshot (`at_checkpoint`,
-  // `options`, or a snapshot-carrying `page_token`), each object is loaded at
-  // the exact version recorded in that snapshot. When none of these is set,
-  // reads current state, where an entry whose object is removed between the
-  // index read and the object load may be skipped.
+  // Optional. Read objects at the end of this checkpoint, within the
+  // checkpoints the server retains for state reads. When `options` is set
+  // without `at_checkpoint` or a cursor, the server reads as of the highest
+  // checkpoint it can serve for state reads (or, when reading under a
+  // checkpoint floor, the admitted checkpoint) and records that checkpoint in
+  // the returned cursors. When the read is pinned to a checkpoint
+  // (`at_checkpoint`, `options`, or a checkpoint-pinned `page_token`), each
+  // object is loaded at the exact version as of that checkpoint. When none of
+  // these is set, reads current state, where an entry whose object is removed
+  // between the index read and the object load may be skipped.
   //
   // Refusals for `at_checkpoint` or a cursor's checkpoint:
-  // - Below the server's configured snapshot window or object pruning floor:
-  //   `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
-  // - Inside the configured snapshot window but missing on this replica (for
-  //   example while its window refills after a restart): `UNAVAILABLE` with
-  //   reason `NOT_READY` (`cause`: `"snapshot_missing"`); retry, preferably on
-  //   another replica.
-  // - Indexed object version missing during a snapshot read: `UNAVAILABLE`
-  //   with reason `NOT_READY` (never silently skipped).
-  // - Above the server's newest retained snapshot: `OUT_OF_RANGE` with reason
-  //   `ABOVE_LATEST_AVAILABLE` (`bound`: `"at_checkpoint"` or `"cursor"`).
-  // - Server without RPC indexes or snapshots enabled: `UNIMPLEMENTED` with
-  //   reason `NOT_SERVED_HERE`.
-  // - Before the server's live indexes have a snapshot ready: `UNAVAILABLE`
-  //   with reason `NOT_READY`.
+  // - Below the server's retained checkpoint range for state reads or object
+  //   pruning floor: `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
+  // - Within the retained checkpoint range, but not yet servable on this
+  //   replica (for example while refilling after a restart): `UNAVAILABLE`
+  //   with reason `NOT_READY` (`cause`: `"checkpoint_unavailable"`); retry,
+  //   preferably on another replica.
+  // - Indexed object version missing during a checkpoint-pinned read:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"pruning_race"`, never
+  //   silently skipped).
+  // - Above the highest checkpoint the server can serve for state reads:
+  //   `OUT_OF_RANGE` with reason `ABOVE_LATEST_AVAILABLE` (`bound`:
+  //   `"at_checkpoint"` or `"cursor"`).
+  // - Server not set up for checkpoint-pinned state reads: `UNIMPLEMENTED`
+  //   with reason `NOT_SERVED_HERE`.
+  // - Before the server's state indexes have any checkpoint ready:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"index_empty"`).
   optional uint64 at_checkpoint = 8;
 
   // Optional. Ownership category to list. When unset, defaults to
@@ -584,8 +606,11 @@ message ListOwnedObjectsResponse {
   repeated bytes cursors = 3;
 
   // Set on every response when `ListOwnedObjectsRequest.options` is set, and
-  // never otherwise. A full page ends with `QUERY_END_REASON_ITEM_LIMIT`; a
-  // shorter page, the last, with:
+  // never otherwise. A page that stops at `options.limit` or the server's
+  // response-size limit ends with `QUERY_END_REASON_ITEM_LIMIT` (so a page
+  // shorter than `options.limit` can still end with
+  // `QUERY_END_REASON_ITEM_LIMIT`). A page that exhausts its interval ends
+  // with:
   //
   // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached the end of the matching
   //   objects.
@@ -624,35 +649,37 @@ message ListObjectsByTypeRequest {
   // Resume from the last item's entry in `ListObjectsByTypeResponse.cursors`,
   // as `after` when ascending or `before` when descending.
   //
-  // Every cursor records the snapshot checkpoint of the listing's first page,
-  // so every page of one listing reads the same snapshot. A cursor whose
-  // checkpoint differs from `at_checkpoint`, `after` and `before` cursors from
-  // different checkpoints, a malformed cursor, or a cursor from another
-  // listing fails with `INVALID_ARGUMENT`.
+  // Every cursor records the checkpoint of the listing's first page, so every
+  // page of one listing reads the state as of the same checkpoint. A cursor
+  // whose checkpoint differs from `at_checkpoint`, `after` and `before`
+  // cursors from different checkpoints, a malformed cursor, or a cursor from
+  // another listing fails with `INVALID_ARGUMENT`.
   optional QueryOptions options = 3;
 
-  // Optional. Read objects at the end of this checkpoint, from the server's
-  // retained snapshot window. When unset on a first page without cursors,
-  // reads from the server's newest retained snapshot (or, when reading under a
-  // checkpoint floor, the admitted snapshot) and records that checkpoint in
-  // the returned cursors. Each object is loaded at the exact version recorded
-  // in that snapshot.
+  // Optional. Read objects at the end of this checkpoint, within the
+  // checkpoints the server retains for state reads. When unset on a first page
+  // without cursors, the server reads as of the highest checkpoint it can
+  // serve for state reads (or, when reading under a checkpoint floor, the
+  // admitted checkpoint) and records that checkpoint in the returned cursors.
+  // Each object is loaded at the exact version as of that checkpoint.
   //
   // Refusals for `at_checkpoint` or a cursor's checkpoint:
-  // - Below the server's configured snapshot window or object pruning floor:
-  //   `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
-  // - Inside the configured snapshot window but missing on this replica (for
-  //   example while its window refills after a restart): `UNAVAILABLE` with
-  //   reason `NOT_READY` (`cause`: `"snapshot_missing"`); retry, preferably on
-  //   another replica.
-  // - Indexed object version missing during a snapshot read: `UNAVAILABLE`
-  //   with reason `NOT_READY` (never silently skipped).
-  // - Above the server's newest retained snapshot: `OUT_OF_RANGE` with reason
-  //   `ABOVE_LATEST_AVAILABLE` (`bound`: `"at_checkpoint"` or `"cursor"`).
-  // - Server without RPC indexes or snapshots enabled: `UNIMPLEMENTED` with
-  //   reason `NOT_SERVED_HERE`.
-  // - Before the server's live indexes have a snapshot ready: `UNAVAILABLE`
-  //   with reason `NOT_READY`.
+  // - Below the server's retained checkpoint range for state reads or object
+  //   pruning floor: `OUT_OF_RANGE` with reason `BELOW_EARLIEST_AVAILABLE`.
+  // - Within the retained checkpoint range, but not yet servable on this
+  //   replica (for example while refilling after a restart): `UNAVAILABLE`
+  //   with reason `NOT_READY` (`cause`: `"checkpoint_unavailable"`); retry,
+  //   preferably on another replica.
+  // - Indexed object version missing during a checkpoint-pinned read:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"pruning_race"`, never
+  //   silently skipped).
+  // - Above the highest checkpoint the server can serve for state reads:
+  //   `OUT_OF_RANGE` with reason `ABOVE_LATEST_AVAILABLE` (`bound`:
+  //   `"at_checkpoint"` or `"cursor"`).
+  // - Server not set up for checkpoint-pinned state reads: `UNIMPLEMENTED`
+  //   with reason `NOT_SERVED_HERE`.
+  // - Before the server's state indexes have any checkpoint ready:
+  //   `UNAVAILABLE` with reason `NOT_READY` (`cause`: `"index_empty"`).
   optional uint64 at_checkpoint = 4;
 }
 
@@ -667,8 +694,11 @@ message ListObjectsByTypeResponse {
   // use as `ListObjectsByTypeRequest.options.after` or `options.before`.
   repeated bytes cursors = 2;
 
-  // Set on every response. A full page ends with
-  // `QUERY_END_REASON_ITEM_LIMIT`; a shorter page, the last, with:
+  // Set on every response. A page that stops at `options.limit` or the
+  // server's response-size limit ends with `QUERY_END_REASON_ITEM_LIMIT` (so
+  // a page shorter than `options.limit` can still end with
+  // `QUERY_END_REASON_ITEM_LIMIT`). A page that exhausts its interval ends
+  // with:
   //
   // - `QUERY_END_REASON_CHECKPOINT_BOUND`: reached the end of the matching
   //   objects.
