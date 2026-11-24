@@ -366,6 +366,15 @@ message ListObjectVersionsRequest {
 // - `QUERY_END_REASON_LEDGER_TIP`: an ascending listing reached the highest
 //   checkpoint the server has indexed, below `end_checkpoint` if set; resume
 //   later from the last cursor received.
+// - `QUERY_END_REASON_SCAN_LIMIT`: the server used up its per-request scan
+//   budget before reaching any of the bounds above. The last frame carries no
+//   item, and its `cursor` is where the scan stopped: resuming from it lists
+//   the rest of the range without skipping or repeating a version.
+//
+// A listing may end with other `QueryEndReason` values, including values
+// added later. Only `QUERY_END_REASON_CHECKPOINT_BOUND` and
+// `QUERY_END_REASON_CURSOR_BOUND` mean the requested range has been listed in
+// full; after any other reason, resume from the last `cursor` received.
 message ListObjectVersionsResponse {
   // The item a frame delivers. Unset on a frame that carries only `end`.
   oneof item {
