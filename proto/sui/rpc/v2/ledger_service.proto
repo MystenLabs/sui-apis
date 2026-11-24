@@ -371,10 +371,8 @@ message ListObjectVersionsRequest {
 //   item, and its `cursor` is where the scan stopped: resuming from it lists
 //   the rest of the range without skipping or repeating a version.
 //
-// A listing may end with other `QueryEndReason` values, including values
-// added later. Only `QUERY_END_REASON_CHECKPOINT_BOUND` and
-// `QUERY_END_REASON_CURSOR_BOUND` mean the requested range has been listed in
-// full; after any other reason, resume from the last `cursor` received.
+// As with every listing, other `QueryEndReason` values may end it too; see
+// `QueryEndReason`.
 message ListObjectVersionsResponse {
   // The item a frame delivers. Unset on a frame that carries only `end`.
   oneof item {

@@ -49,6 +49,13 @@ message QueryOptions {
 }
 
 // Reason the server stopped this query response.
+//
+// A method's documentation names the reasons it returns today, but any
+// listing may end with another value, including values added later. Only
+// `QUERY_END_REASON_CHECKPOINT_BOUND` and `QUERY_END_REASON_CURSOR_BOUND` mean
+// the requested range has been read in full; after any other reason, resume
+// from the final frame's `Watermark.cursor`, or, where frames carry no
+// watermark, from the last cursor the method returned.
 enum QueryEndReason {
   // The stop reason was not specified.
   QUERY_END_REASON_UNKNOWN = 0;
@@ -62,8 +69,9 @@ enum QueryEndReason {
 
   // The response reached the server's per-request bucket-fetch budget for
   // filtered scans before reaching the effective interval bound. The terminal
-  // frame carries no item. Its watermark cursor is the authoritative scan
-  // frontier from which to resume.
+  // frame carries no item. Its watermark cursor, or, where frames carry no
+  // watermark, the cursor the method returns with it, is the authoritative
+  // scan frontier from which to resume.
   QUERY_END_REASON_SCAN_LIMIT = 2;
 
   // The scan reached the edge of the window the request set: its checkpoint
