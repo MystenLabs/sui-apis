@@ -51,10 +51,16 @@ message QueryOptions {
 // Reason the server stopped this query response.
 //
 // A method's documentation names the reasons it returns today, but any
-// listing may end with another value, including values added later. Only
-// `QUERY_END_REASON_CHECKPOINT_BOUND` and `QUERY_END_REASON_CURSOR_BOUND` mean
-// the requested range has been read in full; after any other reason, resume
-// from the final frame's `Watermark.cursor`, or, where frames carry no
+// listing may end with another value, including values added later. Clients
+// act on the reason:
+// - Done: `QUERY_END_REASON_CHECKPOINT_BOUND`, `QUERY_END_REASON_CURSOR_BOUND`,
+//   and `QUERY_END_REASON_LEDGER_TIP` when the request set no end bound.
+// - Resume now: `QUERY_END_REASON_ITEM_LIMIT` and
+//   `QUERY_END_REASON_SCAN_LIMIT`.
+// - Resume after a delay, with backoff: `QUERY_END_REASON_LEDGER_TIP` short of
+//   an end bound the request set, and any value the client does not
+//   recognize.
+// Resume from the final frame's `Watermark.cursor`, or, where frames carry no
 // watermark, from the last cursor the method returned.
 enum QueryEndReason {
   // The stop reason was not specified.
