@@ -364,8 +364,10 @@ message ListObjectVersionsRequest {
 // - `QUERY_END_REASON_CURSOR_BOUND`: reached the far cursor (`before`
 //   ascending, `after` descending).
 // - `QUERY_END_REASON_LEDGER_TIP`: an ascending listing reached the highest
-//   checkpoint the server has indexed, below `end_checkpoint` if set; resume
-//   later from the last cursor received.
+//   checkpoint the server has indexed, below `end_checkpoint` if set. With
+//   `end_checkpoint` set, resume later from the last cursor received; without
+//   it the listing is complete, and resuming later from the last cursor picks
+//   up versions written since.
 // - `QUERY_END_REASON_SCAN_LIMIT`: the server used up its per-request scan
 //   budget before reaching any of the bounds above. The last frame carries no
 //   item, and its `cursor` is where the scan stopped: resuming from it lists
